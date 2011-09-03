@@ -1,7 +1,7 @@
 /*
 Title: Mbed Hello World
 Author: Timothy Alexander
-Desc: Blinks an LED on the Mbed Platform
+Desc: Lights an LED when Input Voltages crosses a Threshold
 */
 
 #include "mbed.h"
