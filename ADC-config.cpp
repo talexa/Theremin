@@ -1,6 +1,9 @@
+/*
+	Author: Timothy Alexander
+	Objective: Configure ADC for Burst DMA Mode Operation with max sampling rate
+*/
 #include mbed.h
-
- #define CLKS_PER_SAMPLE 65 //This is the number of cycles it takes to convert a sample
+#define CLKS_PER_SAMPLE 65 //This is the number of cycles it takes to convert a sample
 
 
 ////////////////////Configuring the ADC for DMA + Burst Mode Operation////////////////////
