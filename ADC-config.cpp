@@ -15,4 +15,8 @@ LPC_SC->PCONP |= (1 << 12);
 LPC_SC->PCLKSEL0 &= ~(0x3 << 24);
 
 //	3. Enable Pins in PINSEL registers
-LPC_SC 
+LPC_SC->PINSEL0 = 1UL << 24;
+
+//	4. Disable NVIC
+
+// 	5. Set clocking rate for ADC
