@@ -9,14 +9,19 @@
 ////////////////////Configuring the ADC for DMA + Burst Mode Operation////////////////////
 
 //	1. Set PCADC bit in PCONP register to Power On
-LPC_SC->PCONP |= (1 << 12);
+	LPC_SC->PCONP |= (1 << 12);
 
 //	2. Set PCLK_ADC bit in PCLKSEL0 Register
-LPC_SC->PCLKSEL0 &= ~(0x3 << 24);
+	LPC_SC->PCLKSEL0 &= ~(0x3 << 24);
 
-//	3. Enable Pins in PINSEL registers
-LPC_SC->PINSEL0 = 1UL << 24;
+//	3. Set Clock Scaling in ADCR Register
+	LPC_ADC->ADCR =
+	
+//	4. Enable Pins in PINSEL registers
+	LPC_SC->PINSEL0 = 1UL << 24;
 
-//	4. Disable NVIC
+//	5. Enable ADC Burst Mode
+	LPC_ADC->ADCR |= 1UL <<16
 
-// 	5. Set clocking rate for ADC
+
+// 	6. Set clocking rate for ADC
