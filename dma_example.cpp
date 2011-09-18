@@ -18,6 +18,8 @@ Serial pc(USBTX,USBRX);
 MODDMA dma;
 
 //Function Prototypes
+void dmaTCCallback(void);
+void dmaERRCallback(void);
 void TC0_callback(void);
 void ERR0_callback(void);
 
@@ -39,7 +41,7 @@ int main(){
 	//Creating a new MODDMA Configuration Object
 	MODDMA_Config *testconfig = new MODDMA_config;
 	
-	config
+	testconfig
 	->ChannelNum	( MODDMA::Channel_0) 
 	->srcMemAddr 	( 0 )
 	->transferType 	( MODDMA::p2m)  //Peripheral to Memory transfer
@@ -52,10 +54,35 @@ int main(){
 	;
 	
 	dma.Setup(config);
-	dma.Enable(config);
+	dma.Enable(config);	
+}
+
+//DMA Controller ERR IRQ Callback
+void dmaERRCAllback(void){
+	error("There be an error");
+}
+//DMA Controller TC IRQ callback
+void dmaERRCallback(void){
 	
+}
+//Configuration callback on TC
+void TC0_callback(void){
+	MODDMA_Config *config = dma.getConfig();
+	dma.haltAndWaitChannelComplete( (MODDMA::CHANNELS)config->channelNum());
+	dma.Disable( (MODDMA::CHANNELS)config->channelNum() );
+	
+	if (dma.irqType() == MODDMA::TcIRQ) {
+		//do something
+		dma.clearTcIrq();	//Always clear the Interrupt when you are done with the IRQ
+	}
+	if (dma.irqType() == MODDMA::ErrIrq) {
+		//do something
+		dma.clearErrIrq();
+	}
 	
 	
 }
-
-	
+//Configuration callback on Error
+void ERR0_callback(void){
+	error("Error with DMA!!!")
+}
