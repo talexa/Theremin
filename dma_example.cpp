@@ -42,12 +42,12 @@ int main(){
 	MODDMA_Config *testconfig = new MODDMA_config;
 	
 	testconfig
-	->ChannelNum	( MODDMA::Channel_0) 
-	->srcMemAddr 	( 0 )
-	->transferType 	( MODDMA::p2m)  //Peripheral to Memory transfer
-	->transferWidth ( MODDMA::word)	//Transfers will be word sized
-	->srcConn 		( MODDMA::ADC)  //Source is ADC
-	->dstConn		( 0 )
+	->ChannelNum	( MODDMA::Channel_0)//First Channel Available
+	->srcMemAddr 	( 0 )				//No Memory Address since Source will be ADC
+	->transferType 	( MODDMA::p2m)  	//Peripheral to Memory transfer
+	->transferWidth ( MODDMA::word)		//Transfers will be word sized
+	->srcConn 		( MODDMA::ADC) 		//Source is ADC
+	->dstConn		( 0 )    
 	->dmaLLI		( 0 )
 	->attach_tc     ( &TC0_callback )
 	->attach_err    ( &ERR0_callback )
@@ -68,21 +68,24 @@ void dmaERRCallback(void){
 //Configuration callback on TC
 void TC0_callback(void){
 	MODDMA_Config *config = dma.getConfig();
+	
+	//Disable Burst Mode and Switch off IRQ Flag
+	LPC_ADC->ADCR $= ~(1UL << 16);
+	LPC_ADC->ADINTEN = 0;
+	
+	//Close DMA Channel to Finish the Cycle
 	dma.haltAndWaitChannelComplete( (MODDMA::CHANNELS)config->channelNum());
 	dma.Disable( (MODDMA::CHANNELS)config->channelNum() );
 	
-	if (dma.irqType() == MODDMA::TcIRQ) {
-		//do something
-		dma.clearTcIrq();	//Always clear the Interrupt when you are done with the IRQ
-	}
-	if (dma.irqType() == MODDMA::ErrIrq) {
-		//do something
-		dma.clearErrIrq();
-	}
-	
-	
+	//Clear DMA IRQ Flags
+	dma.clearTcIrq();	
+	dma.clearErrIrq();
+		
 }
 //Configuration callback on Error
 void ERR0_callback(void){
+	//Need to Turn Off Burst Conversions
+	LPC_ACD->ADCR |= ~(1UL << 16);
+	LPC_ADC->ADINTEN = 0;
 	error("Error with DMA!!!")
 }
