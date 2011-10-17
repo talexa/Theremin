@@ -2,7 +2,6 @@
 	Timothy Alexander
 	MileStone #1 Code
 	Objective: Print Output of ADC to Serial Monitor
-
 */
 
 #include mbed.h
@@ -17,7 +16,6 @@ bool dmaTransferComplete = false;
 
 //Need to make a buffer for taking in A/D Convertor Samples
 uint32_t adBuffer[NUM_OF_SAMPLES * 3];
-b
 Serial pc(USBTX,USBRX);
 MODDMA dma;
 
@@ -27,6 +25,7 @@ void dmaERRCallback(void);
 void TC0_callback(void);
 void ERR0_callback(void);
 
+/*
 extern "C" void TIMER1_handler(void) __irq {
     led2 = !led2; // Show life
     dma.Setup( conf ); 	// Prepare Transfer
@@ -35,7 +34,7 @@ extern "C" void TIMER1_handler(void) __irq {
     LPC_ADC->ADINTEN = 0x100;     // Do all channels.
     LPC_TIM1->IR = 1; // Clr timer1 irq.
 }
-
+*/
 
 int main(){
 	uint32_t adcInputBuffer[SAMPLE_BUFFER_LENGTH]; 		//Buffer to hold most recent ADC conversion
@@ -66,19 +65,40 @@ int main(){
 	MODDMA_Config *config = new MODDMA_config;
 	
 	config
-	->ChannelNum	( MODDMA::Channel_0)//First Channel Available
-	->srcMemAddr 	( 0 )				//No Memory Address since Source will be ADC
-	->transferType 	( MODDMA::p2m)  	//Peripheral to Memory transfer
-	->transferWidth ( MODDMA::word)		//Transfers will be word sized
-	->srcConn 		( MODDMA::ADC) 		//Source is ADC
-	->dstConn		( 0 )    
-	->dmaLLI		( 0 )
-	->attach_tc     ( &TC0_callback )	//Attaching Callback Functions...
-	->attach_err    ( &ERR0_callback )	//To the DMA Controller
-	;
+	->ChannelNum	( MODDMA::Channel_0)		//First Channel Available
+	->srcMemAddr 	( 0 )						//No Memory Address since Source will be ADC
+	->dstMemAddr	( (uint32_t)adcInputBuffer )//This is where the DMA will send the conversion
+	->transferSize 	(SAMPLE_BUFFER_LENGTH)		//Size of the Transfer
+	->transferType 	( MODDMA::p2m)  			//Peripheral to Memory transfer
+	->transferWidth ( MODDMA::word)				//Transfers will be word sized
+	->srcConn 		( MODDMA::ADC) 				//Source is ADC
+	->dstConn		( 0 )    					//Not using Peripheral as Destination
+	->dmaLLI		( 0 )						//Not using Linked List Functions
+	->attach_tc     ( &TC0_callback )			//Attaching Callback Functions...
+	->attach_err    ( &ERR0_callback )			//To the DMA Controller
+	;	//End Configuration
 	
 	dma.Setup(config);
 	dma.Enable(config);	
+	
+	LPC_ADC->ADINTEN = 0x100;		//Setting ADC IRQ Global Flag to the DMA
+	
+	LPC_ADC->ADCR |= (1UL << 16);	//Burst Mode
+	
+	while(1){
+		// When transfer complete do this block.
+        if (dmaTransferComplete) {
+            delete conf; // No memory leaks, delete the configuration.
+            dmaTransferComplete = false;
+            for (int i = 0; i < SAMPLE_BUFFER_LENGTH; i++) {
+                //int channel = (adcInputBuffer[i] >> 24) & 0x7;  //Not using multiple channels just yet!
+                int rawVal = (adcInputBuffer[i] >> 4) & 0xFFF;
+                double finalVal = 3.3 * (double)((double)rawVal) / ((double)0x1000); // Rescaling to 0-3V
+                pc.printf("Array index %02d : ADC input channel 0 = 0x%03x %01.3f volts\n", i,rawVal, finalVal);
+		
+	}
+	
+	
 }
 
 //Configuration callback on TC
