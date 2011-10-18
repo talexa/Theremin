@@ -46,14 +46,6 @@ MODDMA dac_dma; //Creating DMA Object for DAC Output
 
 MODDMA_Config *conf0, *conf1
 
-uint8_t WAVETABLE[OUTPUT_BUFFER_LENGTH];   // Creating WaveTable 
-/* 
- * Determining the value for DACCNTVAL
- * PCLK is set to Oscillate at 24Mhz
- * The formula is in general with f being the intended output frequency
- * DACCNTVAL = 24Mhz/(f * OUTPUTBUFFERLENGTH)
- * These Count values are going to be stored in the NoteBuffer[] Array as defined below
- */
 
 uint8_t  wave_table[256] = {
   0x80, 0x83, 0x86, 0x89, 0x8C, 0x90, 0x93, 0x96,
@@ -89,6 +81,14 @@ uint8_t  wave_table[256] = {
   0x4F, 0x52, 0x55, 0x58, 0x5B, 0x5E, 0x61, 0x64,
   0x67, 0x6A, 0x6D, 0x70, 0x74, 0x77, 0x7A, 0x7D
 };
+
+/* 
+ * Determining the value for DACCNTVAL
+ * PCLK is set to Oscillate at 24Mhz
+ * The formula is in general with f being the intended output frequency
+ * DACCNTVAL = 24Mhz/(f * WaveTableSize)
+ * These Count values are going to be stored in the NoteBuffer[] Array as defined below
+ */
 
 uint16_t NoteBuffer256[] = 
 {
