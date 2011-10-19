@@ -37,164 +37,166 @@ For instance to do the lowest key on the Piano(27Hz) we have to cycle the wavefo
         
 */
 
+#define OUTPUT_BUFFER_LENGTH 360 
+#include "mbed.h"
+#include "MODDMA.h"
 
-#include mbed.h
-#include MODDMA.h
-#define OUTPUT_BUFFER_LENGTH 256        
+AnalogOut output(p18);       
+
+DigitalOut led1(LED1);
 
 MODDMA dac_dma; //Creating DMA Object for DAC Output
+MODDMA_Config *conf0, *conf1;
 
-MODDMA_Config *conf0, *conf1
+void TC0_callback(void);
+void ERR0_callback(void);
+void TC1_callback(void);
+void ERR1_callback(void);
 
-
-uint8_t  wave_table[256] = {
-  0x80, 0x83, 0x86, 0x89, 0x8C, 0x90, 0x93, 0x96,
-  0x99, 0x9C, 0x9F, 0xA2, 0xA5, 0xA8, 0xAB, 0xAE,
-  0xB1, 0xB3, 0xB6, 0xB9, 0xBC, 0xBF, 0xC1, 0xC4,
-  0xC7, 0xC9, 0xCC, 0xCE, 0xD1, 0xD3, 0xD5, 0xD8,
-  0xDA, 0xDC, 0xDE, 0xE0, 0xE2, 0xE4, 0xE6, 0xE8,
-  0xEA, 0xEB, 0xED, 0xEF, 0xF0, 0xF1, 0xF3, 0xF4,
-  0xF5, 0xF6, 0xF8, 0xF9, 0xFA, 0xFA, 0xFB, 0xFC,
-  0xFD, 0xFD, 0xFE, 0xFE, 0xFE, 0xFF, 0xFF, 0xFF,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0xFE, 0xFE, 0xFD,
-  0xFD, 0xFC, 0xFB, 0xFA, 0xFA, 0xF9, 0xF8, 0xF6,
-  0xF5, 0xF4, 0xF3, 0xF1, 0xF0, 0xEF, 0xED, 0xEB,
-  0xEA, 0xE8, 0xE6, 0xE4, 0xE2, 0xE0, 0xDE, 0xDC,
-  0xDA, 0xD8, 0xD5, 0xD3, 0xD1, 0xCE, 0xCC, 0xC9,
-  0xC7, 0xC4, 0xC1, 0xBF, 0xBC, 0xB9, 0xB6, 0xB3,
-  0xB1, 0xAE, 0xAB, 0xA8, 0xA5, 0xA2, 0x9F, 0x9C,
-  0x99, 0x96, 0x93, 0x90, 0x8C, 0x89, 0x86, 0x83,
-  0x80, 0x7D, 0x7A, 0x77, 0x74, 0x70, 0x6D, 0x6A,
-  0x67, 0x64, 0x61, 0x5E, 0x5B, 0x58, 0x55, 0x52,
-  0x4F, 0x4D, 0x4A, 0x47, 0x44, 0x41, 0x3F, 0x3C,
-  0x39, 0x37, 0x34, 0x32, 0x2F, 0x2D, 0x2B, 0x28,
-  0x26, 0x24, 0x22, 0x20, 0x1E, 0x1C, 0x1A, 0x18,
-  0x16, 0x15, 0x13, 0x11, 0x10, 0x0F, 0x0D, 0x0C,
-  0x0B, 0x0A, 0x08, 0x07, 0x06, 0x06, 0x05, 0x04,
-  0x03, 0x03, 0x02, 0x02, 0x02, 0x01, 0x01, 0x01,
-  0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x03,
-  0x03, 0x04, 0x05, 0x06, 0x06, 0x07, 0x08, 0x0A,
-  0x0B, 0x0C, 0x0D, 0x0F, 0x10, 0x11, 0x13, 0x15,
-  0x16, 0x18, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24,
-  0x26, 0x28, 0x2B, 0x2D, 0x2F, 0x32, 0x34, 0x37,
-  0x39, 0x3C, 0x3F, 0x41, 0x44, 0x47, 0x4A, 0x4D,
-  0x4F, 0x52, 0x55, 0x58, 0x5B, 0x5E, 0x61, 0x64,
-  0x67, 0x6A, 0x6D, 0x70, 0x74, 0x77, 0x7A, 0x7D
-};
-
+int wave_table[2][OUTPUT_BUFFER_LENGTH];
+int NoteVal = 152;
 /* 
  * Determining the value for DACCNTVAL
- * PCLK is set to Oscillate at 24Mhz
+ * PCLK is set to Oscillate at 24Mhz, can be reduced at intervals but not necessary since our lowest note works np
  * The formula is in general with f being the intended output frequency
  * DACCNTVAL = 24Mhz/(f * WaveTableSize)
  * These Count values are going to be stored in the NoteBuffer[] Array as defined below
+ * See Piano Key Frequencies.pdf in GitHub Repo for a full list
  */
 
-uint16_t NoteBuffer256[] = 
+uint16_t NoteBuffer[] = 
 {
-	358,	//Middle C
-	338,
-	319,
-	301,
-	284,
-	268,
-	253,
-	239,
-	226,
-	213		//A4
+    358,    //Middle C
+    338,
+    319,
+    301,
+    284,
+    268,
+    253,
+    239,
+    226,
+    213        //A4
 };
 
-uint16_t NoteBuffer360[] = 
-{
-	255,	//Middle C
-	241,
-	227,
-	214,
-	202,
-	191,
-	180,
-	170,
-	161,
-	152,	//A4
-};
 
 int main() {
+/*
+ * Generation of a Sine Wave of 360 Points
+ */
+    for (int i =   0; i <=  90; i++) wave_table[0][i] =  (512 * sin(3.14159/180.0 * i)) + 512;                
+    for (int i =  91; i <= 180; i++) wave_table[0][i] =  wave_table[0][180 - i];
+    for (int i = 181; i <= 270; i++) wave_table[0][i] =  512 - (wave_table[0][i - 180] - 512);
+    for (int i = 271; i <  360; i++) wave_table[0][i] =  512 - (wave_table[0][360 - i] - 512);
+    
+    
+/*
+ * First Thing to do is modify wave table to work with DAC Hardware. 
+ * Since I am double buffering with DMA then I need to duplicate the wavetable. 
+ * As specified in LPC17xx user manual(p583), the DACR Register controls the Voltage Output. In our wavetable we only have naive voltage values.
+ * Bit 16 of the DACR is the Power Bit, because we are operating well below the update speed we can set this to 1 for Power Mode
+ * Bits 15:6 of the DACR is the VALUE field which contains the voltage output.
+ * Bits 5:0 of the DACR are reserved, and should not contain any value
+ * 
+ * Because of the above situation we have to condition our values to accomodate the hardware
+ * 
+ * wave_table[i] = (1 << 16) | (wavetable[i] << 6) & 0xFFC0
+ * 
+ * (1<<16) sets the DAC in Power Mode which Gives a settling time of 2.5us and max current of 350uA and a max update rate of 400kHz
+ * (wavetable[i] << 6) & 0xFFCO shifts the array data into the VALUE field 
+ * 
+ */
+    for(int i = 0; i < OUTPUT_BUFFER_LENGTH; i++){
+        wave_table[0][i] = (1 << 16) | (wave_table[0][i] << 6) & 0xFFC0;
+        wave_table[1][i] = wave_table[0][i];
+    }
 
-		*conf0 = new MODDMA_config;
-        conf0
-        ->ChannelNum ( MODDMA::Channel_0)   	//First Channel Available
-        ->srcMemAddr ( (uint32_t) & buffer[0] ) //Buffer Source
-        ->dstMemAddr ( MODDMA::DAC)
-		->transferSize ( 256 )     				//256 Transfers
-		->transferType ( MODDMA::DAC)       	//Peripheral to Memory transfer
-        ->dstConn ( MODDMA::DAC )                         
-        ->dmaLLI ( 0 )                      	//Linked List 1=Yes, 0=No
-        ->attach_tc ( &TC0_callback )       	//Attaching Callback Functions...
-        ->attach_err ( &ERR0_callback )     	//To the DMA Controller
-        ; // end configuration
-		
-		*conf1 = new MODDMA_config;
-		conf1
-		->channelNum    ( MODDMA::Channel_1 )
-		->srcMemAddr    ( (uint32_t) &buffer[1] )
-		->dstMemAddr    ( MODDMA::DAC )
-		->transferSize  ( 256 )
-		->transferType  ( MODDMA::m2p )
-		->dstConn       ( MODDMA::DAC )
-		->attach_tc     ( &TC1_callback )
-		->attach_err    ( &ERR1_callback )     
-		; // end configuration
-		
-
-		//Begin DMA Transfers and Counter
-		LPC_DAC->DACCTRL |= (3UL << 2);
-		
 
 
+
+    // Prepare the GPDMA system for buffer0.
+    conf0 = new MODDMA_Config;
+    conf0
+     ->channelNum    ( MODDMA::Channel_0 )
+     ->srcMemAddr    ( (uint32_t) &wave_table[0] )
+     ->dstMemAddr    ( MODDMA::DAC )
+     ->transferSize  ( OUTPUT_BUFFER_LENGTH )
+     ->transferType  ( MODDMA::m2p )
+     ->dstConn       ( MODDMA::DAC )
+     ->attach_tc     ( &TC0_callback )
+     ->attach_err    ( &ERR0_callback )     
+    ; // config end
+    
+    
+    // Prepare the GPDMA system for buffer1.
+    conf1 = new MODDMA_Config;
+    conf1
+     ->channelNum    ( MODDMA::Channel_1 )
+     ->srcMemAddr    ( (uint32_t) &wave_table[1])
+     ->dstMemAddr    ( MODDMA::DAC )
+     ->transferSize  ( OUTPUT_BUFFER_LENGTH )
+     ->transferType  ( MODDMA::m2p )
+     ->dstConn       ( MODDMA::DAC )
+     ->attach_tc     ( &TC1_callback )
+     ->attach_err    ( &ERR1_callback )     
+    ; // config end
+
+        //Load the Configuration Settings into the DMA Controller
+        
+        if(!dac_dma.Prepare(conf0)){
+            error("Conf0 could not be prepared, check configuration settings");
+        }
+           LPC_DAC->DACCNTVAL = NoteVal;
+
+                
+        //Begin DMA Transfers and Counter
+        LPC_DAC->DACCTRL |= (3UL << 2);
+        
 
     while(1) {
-            LPC_DAC->DACCNTVAL = NoteBuffer[0];
-            LPC_DAC -> 00000000000000010000000000000000 | dacOutputBuffer[step] >> 6;
-            
+		if(NoteVal < 1200){
+			wait_ms(1);
+			NoteVal++;
+			 LPC_DAC->DACCNTVAL = NoteVal;
+		}
+        if(NoteVal >= 1200){
+            for(int i = 1200;i>152;i--){
+                 wait_ms(1);
+                NoteVal--;
+                 LPC_DAC->DACCNTVAL = NoteVal;
+            }
+           
         }
-    }
+       
+       }
 }
+
 void TC0_callback(void){
 
-	//Get Configuration Pointer and Shut Down DMA Channel
-	MODDMA_Config *config = dma.getConfig();
-	dma.Disable( (MODDMA::CHANNELS)config->channelNum());
-	
-	//Swaps to Buffer 1
-	dma.Prepare(conf1);
-	
-	//Resets IRQ Flags
-	if (dma.irqType() == MODDMA:TcIrq) dma.clearTcIrq(); 
+    //Get Configuration Pointer and Shut Down DMA Channel
+    MODDMA_Config *config = dac_dma.getConfig();
+    dac_dma.Disable( (MODDMA::CHANNELS)config->channelNum());
+    
+    //Swaps to Buffer 1
+    dac_dma.Prepare(conf1);
+    
+    //Resets IRQ Flags
+    if (dac_dma.irqType() == MODDMA::TcIrq) dac_dma.clearTcIrq(); 
 }
 void TC1_callback(void){
-	//Get Configuration Pointer and Shut Down DMA Channel
-	MODDMA_Config *config = dma.getConfig();
-	dma.Disable( (MODDMA::CHANNELS)config->channelNum());
-	
-	//Swaps to Buffer 1
-	dma.Prepare(conf0);
-	
-	//Resets IRQ Flags
-	if (dma.irqType() == MODDMA:TcIrq) dma.clearTcIrq();
+    //Get Configuration Pointer and Shut Down DMA Channel
+    MODDMA_Config *config = dac_dma.getConfig();
+    dac_dma.Disable( (MODDMA::CHANNELS)config->channelNum());
+    
+    //Swaps to Buffer 1
+    dac_dma.Prepare(conf0);
+    
+    //Resets IRQ Flags
+    if (dac_dma.irqType() == MODDMA::TcIrq) dac_dma.clearTcIrq();
 }
 //Configuration 0 Error Callback
 void ERR0_callback(void){
-	error("DMA_0 Failed");
+    error("DMA_0 Failed");
 }
 void ERR1_callback(void){
-	error("DMA_1 Failed");
+    error("DMA_1 Failed");
 }
-
-
-//Method to Populate Wave Table
-void makeWaveTable(void){
-	for (i = 0xFE; i++; i < 
-}
-
-
-//Method to Set the DAC in the correct mode
