@@ -1,0 +1,183 @@
+/*
+ * Tim Alexander
+ * Sampling from ADC and printing RAW data then converted Data to text files
+ */
+
+
+#include "mbed.h"
+#include "MODDMA.h"
+#define SAMPLE_BUFFER_LENGTH 100   //Need to math this out
+
+
+//ADC Activation, Configuration and Pin Selection Routine
+void configure_ADC(void);
+//GPDMA Timer Callback Interrupt Request Routine
+void TC0_callback(void);
+//GPDMA Error Callback Interrupt Request Routine
+void ERR0_callback(void);
+//ADC Begins Conversions
+void beginConversions(void);
+
+
+MODDMA dma;	//GPDMA Controller Object
+
+MODDMA_Config conf; //GPDMA Configuration Object
+
+bool dmaTransferComplete = false;
+
+LocalFileSystem local("local"); //Creating local filesystem 
+
+uint32_t adcInputBuffer[SAMPLE_BUFFER_LENGTH];
+int main(void){
+	
+	//memset(adcInputBuffer, 0 ,sizeof(adcInputBuffer));
+	
+
+	//ADC Configuration Following Order from Ch.29 in LPC17xx User Manual
+	
+	
+	// 1) Set PCADC Bit in PCONP Register
+	LPC_SC->PCONP |= (1UL << 21);
+	
+	// 2) Set PDN Bit in the ADCR Register
+	LPC_ADC-> ADCR = (1UL << 21);
+
+	// 3) Set PCLK_ADC Bit in PCLKSEL0 Register
+	//Bits 25:24 are Peripheral Clock  Bits
+	LPC_SC->PCLKSEL0 &= (3UL << 24);
+	
+	// 4) Enable ADC0 Pins in PINSEL Registers
+	/*
+		Selecting a Pin
+		i)	Reset the Pin by setting the bits to 00
+		ii)	Set the Pin to 10 for ADC mode
+		
+		**PIN SELECTION REGISTERS**
+		PINSEL1 ## USE 10 TO SET FUNCTION ##
+		15:14 -> AD[0] --> Pin 15
+		17:16 -> AD[1] --> Pin 16
+		19:18 -> AD[2] --> Pin 17
+		21:20 -> AD[3] --> Pin 18 	!!!THIS IS FOR AOUT ONLY!!!
+		PINSEL3 ## USE 11 TO SET FUNCTION ##
+		29:28 -> AD[4] --> Pin 19
+		31:30 -> AD[5] --> Pin 20
+		
+	*/
+	
+	LPC_PINCON->PINSEL1 &= ~(3UL << 14);  /* P0.23, Mbed p15 AD0.0 */
+    LPC_PINCON->PINSEL1 |=  (1UL << 14);
+    //LPC_PINCON->PINSEL1 &= ~(3UL << 16);  /* P0.24, Mbed p16 AD0.1 */
+    //LPC_PINCON->PINSEL1 |=  (1UL << 16);
+	
+	
+	// 5) Disable ADC Interrupt
+	NVIC_DisableIRQ(ADC_IRQn);
+	LPC_ADC->ADINTEN = 0x100; // Turns off Conversion Interrupts
+
+	
+
+	/*
+		To set the Sampling Rate
+		13Mhz is the default rate once the Clock is initialized
+		With 8 Bits the lowest the Sampling Rate can be is ~50K
+	 
+		Bit 21 is Operational/Power Down Mode Bit
+		Bits 15:8 are CLKDIV bits for setting Clock Divisor
+		Bits 7:0 are Chip Pins selection bits
+		AD0[0] --> p15 --> P0[23]
+		AD0[1] --> p16 --> P0[24]
+		AD0[2] --> p17 --> P0[25]
+		AD0[3] --> p18 --> P0[26]
+		AD0[4] --> p19 --> P1[30]
+		AD0[5] --> p20 --> P1[31] 
+		AD0[6] --> N/A --> P0[26] !!!NOT USED ON MBED!!!
+		AD0[7] --> N/A --> P0[26] !!!NOT USED ON MBED!!!
+	 */	 
+	
+	LPC_ADC->ADCR |= (1UL << 21) | (1UL << 16) | (8UL << 8) | (1UL << 0);
+
+
+	//Turn on Timer 1 in PCONP Register
+	LPC_SC -> PCONP |= (1UL << 2);
+	//Turn on Peripheral Clock Selection for Timer 1
+	LPC_SC -> PCLKSEL0 |= (3UL << 4);
+	//Turn
+	
+	NIVC_SetVector(TIMER1_IRQn, (uint32_t)TIMER1_handler);
+	NVIC_EnableIRQ(TIMER1_IRQn);
+	
+	
+	//ADC Configuration for DMA Controller
+    
+    conf.channelNum    ( MODDMA::Channel_0 );
+    conf.srcMemAddr    ( 0 );
+    conf.dstMemAddr    ( (uint32_t)adcInputBuffer );
+    conf.transferSize  ( SAMPLE_BUFFER_LENGTH );
+    conf.transferType  ( MODDMA::p2m );
+    conf.transferWidth ( MODDMA::word );
+    conf.srcConn       ( MODDMA::ADC );
+	//conf.dstConn       ( 0 );
+    conf.dmaLLI        ( 0 );
+    conf.attach_tc     ( &TC0_callback );
+    conf.attach_err    ( &ERR0_callback );
+	;
+	// !!! Must pass pointer to the following 2 functions !!!
+	dma.Setup(&conf);
+	dma.Enable(&conf);
+	
+	
+	
+	//beginConversions();
+	
+	
+    if(dmaTransferComplete){
+		FILE *log = fopen("/local/adc_data.txt", "w");
+		fprintf(log,"RAW ADC DATA || ADJUSTED ADC DATA\n");
+		for(int i = 0; i < SAMPLE_BUFFER_LENGTH; i++){
+			fprintf(log,"BUFFER[%d] = %u",i,adcInputBuffer[i]);
+		}
+		fclose(log);
+	}
+}
+
+void beginConversions(void){
+    // !!! This Activates the A/D Conversions !!!
+	LPC_ADC->ADCR |= (1UL << 16);
+}
+
+/*
+	TC0 Callback is made when the DMA transfer is done. 
+	Certain Events have to be done before any other control flow is possible
+	Disable Burst mode and Turn off IRQ Flag
+	Shut Down the DMA Channel
+	Set Internal Flags
+	Clear DMA IRQ Flags
+*/
+void TC0_callback(void) {
+    
+    MODDMA_Config *config = dma.getConfig();
+    
+   
+    LPC_ADC->ADINTEN = 0;    
+    
+    // Finish the DMA cycle by shutting down the channel.
+    dma.haltAndWaitChannelComplete( (MODDMA::CHANNELS)config->channelNum());
+    dma.Disable( (MODDMA::CHANNELS)config->channelNum() );
+    
+    // Tell main() while(1) loop to print the results.
+    dmaTransferComplete = true;            
+    
+    // Clear DMA IRQ flags.
+    if (dma.irqType() == MODDMA::TcIrq) dma.clearTcIrq();    
+    if (dma.irqType() == MODDMA::ErrIrq) dma.clearErrIrq();
+}
+
+// Configuration callback on Error
+void ERR0_callback(void) {
+    // Switch off burst conversions.
+    LPC_ADC->ADCR |= ~(1UL << 16);
+    LPC_ADC->ADINTEN = 0;
+    error("Epic Failure; there was a DMA ERR!");
+    FILE *log = fopen("/local/bad.txt", "w");
+	fprintf(log,"DMA ERROR BRO");
+}

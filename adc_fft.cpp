@@ -52,6 +52,10 @@ int main() {
 	LPC->ADCR |= (1UL << 16);
 	
 	
+	if (dmaTransferComplete) { //This Triggers when
+		//Do Interesting Stuff Here
+		dmaTransferComplete = false;
+	}
 	
 	
 	
@@ -70,10 +74,6 @@ int main() {
 	
 	
 	
-	if (dmaTransferComplete) {
-		//Do Interesting Stuff Here
-		dmaTransferComplete = false;
-	}
 
 }
 
