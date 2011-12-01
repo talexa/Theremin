@@ -1,6 +1,5 @@
 /*
- * This example was provided to support Mbed forum thread:-
- * http://mbed.org/forum/mbed/topic/1798
+	Allowing for Static Pin Switchiing via Boolean
  */
  
 #include "mbed.h"
