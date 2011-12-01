@@ -20,18 +20,18 @@ MODDMA_Config adc_conf, *dac_conf0, *dac_conf1
 // 	FALSE => Pin 20
 bool control_ticker = false ;
 
-//Method to return 
+//Method to return slope direction as a boolean
 bool cal_slope(int x, int y);
 
 // ISR set's this when transfer complete.
 bool dmaTransferComplete = false;
 
+//Function Prototypes for MODDMA Configuratiosn
 void config_adc(void);
 void config_dac0(void);
 void config_dac1(void);
 
 // Function prototypes for IRQ callbacks.
-// See definitions following main() below.
 void adc_TC0_callback(void);
 void adc_ERR0_callback(void);
 void dac_TC0_callback(void);
