@@ -1,5 +1,5 @@
 /*
-	Allowing for Static Pin Switchiing via Boolean
+	Added in DMA Configurations
  */
  
 #include "mbed.h"
@@ -13,28 +13,31 @@ DigitalOut led3(LED3);
 DigitalOut led4(LED4);
 
 MODDMA dma;
-MODDMA_Config conf;
+MODDMA_Config adc_conf, *dac_conf0, *dac_conf1
 
 
 //	TRUE  => Pin 16
 // 	FALSE => Pin 20
-bool control_ticker = true ;
+bool control_ticker = false ;
 
 //Method to return 
 bool cal_slope(int x, int y);
-
-void rescale(void);
-
-int amdf(void);
 
 // ISR set's this when transfer complete.
 bool dmaTransferComplete = false;
 
 void config_adc(void);
+void config_dac0(void);
+void config_dac1(void);
+
 // Function prototypes for IRQ callbacks.
 // See definitions following main() below.
-void TC0_callback(void);
-void ERR0_callback(void);
+void adc_TC0_callback(void);
+void adc_ERR0_callback(void);
+void dac_TC0_callback(void);
+void dac_ERR0_callback(void);
+void dac_TC1_callback(void);
+void dac_ERR1_callback(void);
 
 LocalFileSystem local("local");
 
@@ -113,7 +116,7 @@ int main() {
 
     switch (control_ticker){
 		case true:LPC_PINCON->PINSEL1 |=  (1UL << 16); break;
-		case false:LPC_PINCON->PINSEL3 |=  (1UL << 30); break;
+		case false:LPC_PINCON->PINSEL3 |=  (3UL << 30); break;
 	}
     
     
@@ -125,6 +128,16 @@ int main() {
     
     //Activation for ADC Burst Mode
     LPC_ADC->ADCR |= (1UL << 16);
+    
+    //DAC Activation
+     if(!dac_dma.Prepare(conf0)){
+            error("Conf0 could not be prepared, check configuration settings");
+        }
+           LPC_DAC->DACCNTVAL = NoteVal;
+    
+    
+    
+    
 		while(1){
         // When transfer complete do this block.
         if (dmaTransferComplete) {
@@ -153,8 +166,67 @@ int main() {
 
 
 
+
+
+
+}
+void config_adc(void){
+	// Prepare an ADC configuration.
+     adc_conf.channelNum    ( MODDMA::Channel_2 );
+     adc_conf.srcMemAddr    ( 0 );
+     adc_conf.dstMemAddr    ( (uint32_t)adcInputBuffer );
+     adc_conf.transferSize  ( SAMPLE_BUFFER_LENGTH );
+     adc_conf.transferType  ( MODDMA::p2m );
+     adc_conf.transferWidth ( MODDMA::word );
+     adc_conf.srcConn       ( MODDMA::ADC );
+     adc_conf.dstConn       ( 0 );
+     adc_conf.dmaLLI        ( 0 );
+     adc_conf.attach_tc     ( &adc_TC0_callback );
+     adc_conf.attach_err    ( &adc_ERR0_callback );
+    ; // end conf.
+    
+    // Prepare configuration.
+    dma.Setup( &adc_conf );
+    
+    // Enable configuration.
+    dma.Enable( &adc_conf );
+    
+    // Enable ADC irq flag (to DMA).
+    // Note, don't set the individual flags,
+    // just set the global flag.
+    LPC_ADC->ADINTEN = 0x100;
+}
+
+
+void dac_config0(void){
+	// Prepare the GPDMA system for buffer0.
+    conf0
+     ->channelNum    ( MODDMA::Channel_0 )
+     ->srcMemAddr    ( (uint32_t) &wave_table[0] )
+     ->dstMemAddr    ( MODDMA::DAC )
+     ->transferSize  ( OUTPUT_BUFFER_LENGTH )
+     ->transferType  ( MODDMA::m2p )
+     ->dstConn       ( MODDMA::DAC )
+     ->attach_tc     ( &TC0_callback )
+     ->attach_err    ( &ERR0_callback )     
+    ; // config end
+}
+void dac_config1(void){
+	// Prepare the GPDMA system for buffer1.
+    conf1
+     ->channelNum    ( MODDMA::Channel_1 )
+     ->srcMemAddr    ( (uint32_t) &wave_table[1])
+     ->dstMemAddr    ( MODDMA::DAC )
+     ->transferSize  ( OUTPUT_BUFFER_LENGTH )
+     ->transferType  ( MODDMA::m2p )
+     ->dstConn       ( MODDMA::DAC )
+     ->attach_tc     ( &TC1_callback )
+     ->attach_err    ( &ERR1_callback )     
+    ; // config end
+}
+
 // Configuration callback on TC
-void TC0_callback(void) {
+void adc_TC0_callback(void) {
     
     MODDMA_Config *config = dma.getConfig();
     
@@ -177,38 +249,45 @@ void TC0_callback(void) {
     if (dma.irqType() == MODDMA::ErrIrq) dma.clearErrIrq();
 }
 
+
+void dac_TC0_callback(void){
+	//Get Configuration Pointer and Shut Down DMA Channel
+    MODDMA_Config *config = dac_dma.getConfig();
+    dac_dma.Disable( (MODDMA::CHANNELS)config->channelNum());
+    
+    //Swaps to Buffer 1
+    dma.Prepare(dac_conf1);
+    
+    //Resets IRQ Flags
+    if (dma.irqType() == MODDMA::TcIrq) ddma.clearTcIrq(); 
+}
+
+void dac_TC1_callback(void){
+	//Get Configuration Pointer and Shut Down DMA Channel
+    MODDMA_Config *config = dma.getConfig();
+    dma.Disable( (MODDMA::CHANNELS)config->channelNum());
+    
+    //Swaps to Buffer 1
+    dma.Prepare(dac_conf0);
+    
+    //Resets IRQ Flags
+    if (dma.irqType() == MODDMA::TcIrq) dma.clearTcIrq();
+}
+
+
 // Configuration callback on Error
-void ERR0_callback(void) {
+void adc_ERR0_callback(void) {
     // Switch off burst conversions.
     LPC_ADC->ADCR |= ~(1UL << 16);
     LPC_ADC->ADINTEN = 0;
     error("Oh no! My Mbed EXPLODED! :( Only kidding, go find the problem");
-}
 
-void config_adc(void){
-	// Prepare an ADC configuration.
-     conf.channelNum    ( MODDMA::Channel_0 );
-     conf.srcMemAddr    ( 0 );
-     conf.dstMemAddr    ( (uint32_t)adcInputBuffer );
-     conf.transferSize  ( SAMPLE_BUFFER_LENGTH );
-     conf.transferType  ( MODDMA::p2m );
-     conf.transferWidth ( MODDMA::word );
-     conf.srcConn       ( MODDMA::ADC );
-     conf.dstConn       ( 0 );
-     conf.dmaLLI        ( 0 );
-     conf.attach_tc     ( &TC0_callback );
-     conf.attach_err    ( &ERR0_callback );
-    ; // end conf.
-    
-    // Prepare configuration.
-    dma.Setup( &conf );
-    
-    // Enable configuration.
-    dma.Enable( &conf );
-    
-    // Enable ADC irq flag (to DMA).
-    // Note, don't set the individual flags,
-    // just set the global flag.
-    LPC_ADC->ADINTEN = 0x100;
-}
+void dac_ERR0_callback(void){error("DAC_0 Failed");}
+
+void dac_ERR1_callback(void){error("DAC_1 Failed");}
+
+
+
+
+
 	
